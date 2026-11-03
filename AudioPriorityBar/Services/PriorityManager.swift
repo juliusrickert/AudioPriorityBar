@@ -142,6 +142,21 @@ class PriorityManager {
         defaults.set(list, forKey: neverUseKey)
     }
 
+    // MARK: - Saved Input Levels
+
+    private let inputVolumesKey = "inputVolumes"
+
+    func savedInputVolume(for device: AudioDevice) -> Float? {
+        let volumes = defaults.dictionary(forKey: inputVolumesKey) as? [String: Double] ?? [:]
+        return volumes[device.uid].map { Float($0) }
+    }
+
+    func saveInputVolume(_ volume: Float, for device: AudioDevice) {
+        var volumes = defaults.dictionary(forKey: inputVolumesKey) as? [String: Double] ?? [:]
+        volumes[device.uid] = Double(volume)
+        defaults.set(volumes, forKey: inputVolumesKey)
+    }
+
     // MARK: - Hidden Devices (per category)
 
     private let hiddenMicsKey = "hiddenMics"

@@ -81,6 +81,7 @@ class AudioManager: ObservableObject {
     @Published var currentOutputId: AudioObjectID?
     @Published var currentMode: OutputCategory = .speaker
     @Published var volume: Float = 0
+    @Published var inputVolume: Float? = nil
     @Published var isEditMode: Bool = false
     @Published var isCustomMode: Bool = false
     @Published var mutedDeviceIds: Set<AudioObjectID> = []
@@ -184,6 +185,7 @@ class AudioManager: ObservableObject {
     private func handleMuteOrVolumeChange() {
         refreshMuteStatus()
         refreshVolume()
+        refreshInputVolume()
     }
 
     func refreshDevices() {
@@ -242,6 +244,7 @@ class AudioManager: ObservableObject {
         }
         currentInputId = deviceService.getCurrentDefaultDevice(type: .input)
         currentOutputId = deviceService.getCurrentDefaultDevice(type: .output)
+        refreshInputVolume()
     }
 
     func toggleEditMode() {
@@ -388,6 +391,30 @@ class AudioManager: ObservableObject {
     private func applyInputDevice(_ device: AudioDevice) {
         deviceService.setDefaultDevice(device.id, type: .input)
         currentInputId = device.id
+        // Restore the saved level for this input, if any
+        if let saved = priorityManager.savedInputVolume(for: device) {
+            deviceService.setInputVolume(saved, for: device.id)
+        }
+        refreshInputVolume()
+    }
+
+    /// Reads the active input's level; nil if the device has no adjustable level.
+    func refreshInputVolume() {
+        if let id = currentInputId {
+            inputVolume = deviceService.getInputVolume(id)
+        } else {
+            inputVolume = nil
+        }
+    }
+
+    /// Sets the active input's level and remembers it for that device.
+    func setInputVolume(_ newVolume: Float) {
+        guard let id = currentInputId else { return }
+        inputVolume = newVolume
+        deviceService.setInputVolume(newVolume, for: id)
+        if let device = inputDevices.first(where: { $0.id == id }) {
+            priorityManager.saveInputVolume(newVolume, for: device)
+        }
     }
 
     private func applyOutputDevice(_ device: AudioDevice) {

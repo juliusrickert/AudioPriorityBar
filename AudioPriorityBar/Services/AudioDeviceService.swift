@@ -228,6 +228,62 @@ class AudioDeviceService {
         return status == noErr ? volume : 1.0
     }
 
+    // MARK: - Input Volume
+
+    /// Property addresses that may expose an input volume, in order of preference.
+    /// Falls back from the virtual main volume to the master scalar, then to per-channel scalars.
+    private func inputVolumeAddresses(_ deviceId: AudioObjectID) -> [AudioObjectPropertyAddress] {
+        var candidates = [
+            AudioObjectPropertyAddress(
+                mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        ]
+        for channel: UInt32 in 1...2 {
+            candidates.append(AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: channel
+            ))
+        }
+        return candidates.filter {
+            var address = $0
+            return AudioObjectHasProperty(deviceId, &address)
+        }
+    }
+
+    /// Returns the input volume (0...1), or nil if the device has no software-controllable input level.
+    func getInputVolume(_ deviceId: AudioObjectID) -> Float? {
+        guard var address = inputVolumeAddresses(deviceId).first else { return nil }
+        var volume: Float32 = 0
+        var dataSize = UInt32(MemoryLayout<Float32>.size)
+        let status = AudioObjectGetPropertyData(deviceId, &address, 0, nil, &dataSize, &volume)
+        return status == noErr ? volume : nil
+    }
+
+    func setInputVolume(_ volume: Float, for deviceId: AudioObjectID) {
+        let addresses = inputVolumeAddresses(deviceId)
+        // If the first is the main/master control, set only that; otherwise set every channel.
+        let targets = addresses.first.map { $0.mElement == kAudioObjectPropertyElementMain ? [$0] : addresses.filter { $0.mElement != kAudioObjectPropertyElementMain } } ?? []
+        for var address in targets {
+            var mutableVolume = volume
+            AudioObjectSetPropertyData(
+                deviceId,
+                &address,
+                0,
+                nil,
+                UInt32(MemoryLayout<Float32>.size),
+                &mutableVolume
+            )
+        }
+    }
+
     func startListening() {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
@@ -355,6 +411,15 @@ class AudioDeviceService {
                 muteVolumeListenerBlock!
             )
 
+            // Listen to input volume changes
+            volumeAddress.mScope = kAudioDevicePropertyScopeInput
+            AudioObjectAddPropertyListenerBlock(
+                deviceId,
+                &volumeAddress,
+                DispatchQueue.main,
+                muteVolumeListenerBlock!
+            )
+
             monitoredDeviceIds.insert(deviceId)
         }
     }
@@ -378,6 +443,9 @@ class AudioDeviceService {
                 mScope: kAudioDevicePropertyScopeOutput,
                 mElement: kAudioObjectPropertyElementMain
             )
+            AudioObjectRemovePropertyListenerBlock(deviceId, &volumeAddress, DispatchQueue.main, block)
+
+            volumeAddress.mScope = kAudioDevicePropertyScopeInput
             AudioObjectRemovePropertyListenerBlock(deviceId, &volumeAddress, DispatchQueue.main, block)
         }
 

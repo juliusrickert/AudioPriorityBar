@@ -76,7 +76,8 @@ struct MenuBarView: View {
                         onHide: { audioManager.hideDevice($0, category: nil) },
                         onUnhide: { audioManager.unhideDevice($0, category: nil) },
                         category: nil,
-                        showCategoryPicker: false
+                        showCategoryPicker: false,
+                        showInputLevel: true
                     )
                 }
                 .padding(.horizontal, 16)
@@ -301,6 +302,7 @@ struct DeviceSectionView: View {
     var category: OutputCategory?
     var showCategoryPicker: Bool = false
     var isActiveCategory: Bool = true
+    var showInputLevel: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -334,6 +336,41 @@ struct DeviceSectionView: View {
                     category: category
                 )
             }
+
+            if showInputLevel {
+                InputLevelSliderView()
+            }
+        }
+    }
+}
+
+struct InputLevelSliderView: View {
+    @EnvironmentObject var audioManager: AudioManager
+
+    var body: some View {
+        if let level = audioManager.inputVolume {
+            HStack(spacing: 10) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.accentColor)
+                    .frame(width: 20)
+
+                Slider(
+                    value: Binding(
+                        get: { Double(level) },
+                        set: { audioManager.setInputVolume(Float($0)) }
+                    ),
+                    in: 0...1
+                )
+                .controlSize(.small)
+
+                Text("\(Int(level * 100))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 36, alignment: .trailing)
+            }
+            .padding(.horizontal, 8)
+            .help("Level is saved for this microphone and restored when it is selected")
         }
     }
 }
